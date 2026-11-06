@@ -4,6 +4,7 @@
 import argparse
 
 from netprobe.dns import lookup_host
+from netprobe.http import check_http
 from netprobe.scanner import scan_ports
 
 
@@ -40,7 +41,6 @@ def main(argv: list[str] | None = None) -> int:
         "scan",
         help="Scan TCP ports on a host",
     )
-
     scan_parser.add_argument("host", help="Target hostname or IP address")
     scan_parser.add_argument(
         "--ports",
@@ -59,13 +59,52 @@ def main(argv: list[str] | None = None) -> int:
         "dns",
         help="Resolve a hostname using DNS",
     )
-
     dns_parser.add_argument(
         "host",
         help="Target hostname or IP address",
     )
 
+    http_parser = subparsers.add_parser(
+        "http",
+        help="Check HTTP/HTTPS endpoint",
+    )
+    http_parser.add_argument(
+        "url",
+        help="Target HTTP or HTTPS URL",
+    )
+    http_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=5.0,
+        help="Request timeout in seconds (default: 5.0)",
+    )
+
     args = parser.parse_args(argv)
+
+    if args.command == "http":
+        try:
+            result = check_http(
+                args.url,
+                timeout=args.timeout,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+
+        print(f"\nNetProbe - HTTP check: {result.url}\n")
+
+        if result.status_code is not None:
+            print(f"Status: {result.status_code} {result.reason}")
+            print(f"Final URL: {result.final_url}")
+            print(f"Content-Type: {result.content_type or '-'}")
+        else:
+            print("Status: NO RESPONSE")
+
+        print(f"Response time: {result.latency_ms:.2f} ms")
+
+        if result.error:
+            print(f"Error: {result.error}")
+
+        print()
 
     if args.command == "dns":
         try:

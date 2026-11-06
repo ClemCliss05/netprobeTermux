@@ -5,6 +5,7 @@ import pytest
 
 from netprobe.cli import main, parse_ports
 from netprobe.dns import DNSLookupResult
+from netprobe.http import HTTPResult
 from netprobe.scanner import PortScanResult, PortState
 
 def test_parse_ports():
@@ -133,3 +134,72 @@ def test_main_dns_error(monkeypatch, capsys):
     assert "No IPv6 address found" in output
     assert "Name or service not known" in output
     assert "Error code: -2" in output
+
+
+def test_main_http_success(monkeypatch, capsys):
+    expected_result = HTTPResult(
+        url="https://example.com",
+        status_code=200,
+        reason="OK",
+        final_url="https://example.com",
+        latency_ms=125.5,
+        content_type="text/html",
+    )
+
+    def fake_check_http(url, timeout):
+        assert url == "https://example.com"
+        assert timeout == 5.0
+        return expected_result
+
+    monkeypatch.setattr("netprobe.cli.check_http", fake_check_http)
+
+    assert main(["http", "https://example.com"]) == 0
+
+    output = capsys.readouterr().out
+    assert "200 OK" in output
+    assert "125.50 ms" in output
+    assert "text/html" in output
+
+
+def test_main_http_error_status(monkeypatch, capsys):
+    expected_result = HTTPResult(
+        url="https://example.com/missing",
+        status_code=404,
+        reason="Not Found",
+        final_url="https://example.com/missing",
+        latency_ms=80.0,
+        content_type="text/html",
+    )
+
+    monkeypatch.setattr(
+        "netprobe.cli.check_http",
+        lambda url, timeout: expected_result,
+    )
+
+    assert main(["http", "https://example.com/missing"]) == 0
+
+    output = capsys.readouterr().out
+    assert "404 Not Found" in output
+
+
+def test_main_http_network_error(monkeypatch, capsys):
+    expected_result = HTTPResult(
+        url="https://example.com",
+        status_code=None,
+        reason=None,
+        final_url=None,
+        latency_ms=5000.0,
+        content_type=None,
+        error="Connection timed out",
+    )
+
+    monkeypatch.setattr(
+        "netprobe.cli.check_http",
+        lambda url, timeout: expected_result,
+    )
+
+    assert main(["http", "https://example.com"]) == 0
+
+    output = capsys.readouterr().out
+    assert "NO RESPONSE" in output
+    assert "Connection timed out" in output
