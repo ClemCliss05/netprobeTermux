@@ -3,6 +3,7 @@
 
 import argparse
 
+from netprobe.dns import lookup_host
 from netprobe.scanner import scan_ports
 
 
@@ -54,7 +55,47 @@ def main(argv: list[str] | None = None) -> int:
         help="Connection timeout in seconds (default: 1.0)",
     )
 
+    dns_parser = subparsers.add_parser(
+        "dns",
+        help="Resolve a hostname using DNS",
+    )
+
+    dns_parser.add_argument(
+        "host",
+        help="Target hostname or IP address",
+    )
+
     args = parser.parse_args(argv)
+
+    if args.command == "dns":
+        try:
+            result = lookup_host(args.host)
+        except ValueError as exc:
+            parser.error(str(exc))
+
+        print(f"\nNetProbe - DNS lookup: {result.host}\n")
+
+        print("IPv4:")
+        if result.ipv4:
+            for address in result.ipv4:
+                print(f"  {address}")
+        else:
+            print("  No IPv4 address found")
+
+        print("\nIPv6:")
+        if result.ipv6:
+            for address in result.ipv6:
+                print(f"  {address}")
+        else:
+            print("  No IPv6 address found")
+
+        print(f"\nResolution time: {result.latency_ms:.2f} ms")
+
+        if result.error:
+            print(f"DNS error: {result.error}")
+            print(f"Error code: {result.error_code}")
+
+        print()
 
     if args.command == "scan":
         try:
