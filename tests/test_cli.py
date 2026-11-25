@@ -7,6 +7,7 @@ from netprobe.cli import main, parse_ports
 from netprobe.dns import DNSLookupResult
 from netprobe.http import HTTPResult
 from netprobe.scanner import PortScanResult, PortState
+from netprobe.tls import TLSResult
 
 def test_parse_ports():
     assert parse_ports("80,443") == [80, 443]
@@ -203,3 +204,94 @@ def test_main_http_network_error(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "NO RESPONSE" in output
     assert "Connection timed out" in output
+
+
+def test_main_tls_success(monkeypatch, capsys):
+    expected = TLSResult(
+        host="example.com",
+        port=443,
+        tls_version="TLSv1.3",
+        cipher="TLS_AES_256_GCM_SHA384",
+        cipher_bits=256,
+        certificate_subject="commonName=example.com",
+        certificate_issuer="commonName=Test CA",
+        not_before="2026-11-24T00:00:00+00:00",
+        not_after="2027-02-22T00:00:00+00:00",
+        days_remaining=89,
+        latency_ms=120.5,
+    )
+
+    monkeypatch.setattr(
+        "netprobe.cli.check_tls",
+        lambda host, port, timeout: expected,
+    )
+
+    assert main(["tls", "example.com"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Status: VERIFIED" in output
+    assert "TLSv1.3" in output
+    assert "89" in output
+
+
+def test_main_tls_failure(monkeypatch, capsys):
+    expected = TLSResult(
+        host="example.com",
+        port=443,
+        tls_version=None,
+        cipher=None,
+        cipher_bits=None,
+        certificate_subject=None,
+        certificate_issuer=None,
+        not_before=None,
+        not_after=None,
+        days_remaining=None,
+        latency_ms=100.0,
+        error="Certificate verification failed",
+        error_code=1,
+    )
+
+    monkeypatch.setattr(
+        "netprobe.cli.check_tls",
+        lambda host, port, timeout: expected,
+    )
+
+    assert main(["tls", "example.com"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Status: FAILED" in output
+    assert "Certificate verification failed" in output
+
+
+def test_main_tls_custom_port(monkeypatch, capsys):
+    expected = TLSResult(
+        host="example.com",
+        port=8443,
+        tls_version=None,
+        cipher=None,
+        cipher_bits=None,
+        certificate_subject=None,
+        certificate_issuer=None,
+        not_before=None,
+        not_after=None,
+        days_remaining=None,
+        latency_ms=100.0,
+        error="Connection refused",
+    )
+
+    def fake_check_tls(host, port, timeout):
+        assert host == "example.com"
+        assert port == 8443
+        assert timeout == 3.0
+        return expected
+
+    monkeypatch.setattr("netprobe.cli.check_tls", fake_check_tls)
+
+    assert main([
+        "tls", "example.com", "--port", "8443", "--timeout", "3"
+    ]) == 0
+
+    output = capsys.readouterr().out
+    assert "example.com:8443" in output
+    assert "Connection refused" in output
+

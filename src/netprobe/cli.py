@@ -6,6 +6,7 @@ import argparse
 from netprobe.dns import lookup_host
 from netprobe.http import check_http
 from netprobe.scanner import scan_ports
+from netprobe.tls import check_tls
 
 
 def parse_ports(value: str) -> list[int]:
@@ -30,12 +31,14 @@ def parse_ports(value: str) -> list[int]:
 def main(argv: list[str] | None = None) -> int:
     """Run the NetProbe command-line interface."""
 
+
     parser = argparse.ArgumentParser(
         prog="netprobe",
         description="Lightweight network diagnostics tool",
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+
 
     scan_parser = subparsers.add_parser(
         "scan",
@@ -55,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Connection timeout in seconds (default: 1.0)",
     )
 
+
     dns_parser = subparsers.add_parser(
         "dns",
         help="Resolve a hostname using DNS",
@@ -63,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         "host",
         help="Target hostname or IP address",
     )
+
 
     http_parser = subparsers.add_parser(
         "http",
@@ -79,7 +84,34 @@ def main(argv: list[str] | None = None) -> int:
         help="Request timeout in seconds (default: 5.0)",
     )
 
+
+    tls_parser = subparsers.add_parser(
+        "tls",
+        help="Check TLS connection and certificate",
+    )
+
+    tls_parser.add_argument(
+        "host",
+        help="Target hostname",
+    )
+
+    tls_parser.add_argument(
+        "--port",
+        type=int,
+        default=443,
+        help="Target TCP port (default: 443)",
+    )
+
+    tls_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=5.0,
+        help="Connection timeout in seconds (default: 5.0)",
+    )
+
+
     args = parser.parse_args(argv)
+
 
     if args.command == "http":
         try:
@@ -105,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Error: {result.error}")
 
         print()
+
 
     if args.command == "dns":
         try:
@@ -136,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
 
         print()
 
+
     if args.command == "scan":
         try:
             results = scan_ports(
@@ -166,6 +200,38 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"         Error code: {result.error_code}")
 
         print(f"\n{len(results)} connection result(s)\n")
+
+
+    if args.command == "tls":
+        try:
+            result = check_tls(
+                args.host,
+                port=args.port,
+                timeout=args.timeout,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+
+        print(f"\nNetProbe - TLS check: {result.host}:{result.port}\n")
+
+        if result.error:
+            print("Status: FAILED")
+            print(f"Error: {result.error}")
+            if result.error_code is not None:
+                print(f"Error code: {result.error_code}")
+        else:
+            print("Status: VERIFIED")
+            print(f"TLS version: {result.tls_version}")
+            print(f"Cipher: {result.cipher}")
+            print(f"Cipher bits: {result.cipher_bits}")
+            print(f"Certificate subject: {result.certificate_subject}")
+            print(f"Certificate issuer: {result.certificate_issuer}")
+            print(f"Not before: {result.not_before}")
+            print(f"Not after: {result.not_after}")
+            print(f"Days remaining: {result.days_remaining}")
+
+        print(f"Connection time: {result.latency_ms:.2f} ms\n")
+
 
     return 0
 
